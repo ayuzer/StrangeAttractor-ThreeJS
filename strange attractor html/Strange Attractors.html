@@ -1,0 +1,1036 @@
+<!-- CREDITS TO: https://www.clicktorelease.com/code/codevember-2016/3/#lorenz,10,28,2.6666666666666665,0,10,10 -->
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Strange Attractors</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+
+<link rel="stylesheet" type="text/css" href="../css/styles.css" media="screen" />
+		<link href="https://fonts.googleapis.com/css?family=Lato:100,700|Playfair+Display:700" rel="stylesheet">
+
+		<style>
+		#attractors{ list-style-type: none; margin-bottom: 1em; }
+		#attractors li{ display: inline; opacity: .5; cursor:pointer; transition: opacity 100ms ease-out; margin-right: 1em;}
+		#attractors li.active{ font-weight: bold; opacity: 1;}
+		#attractors li:hover{ opacity: 1; }
+
+		</style>
+
+</head>
+	<body>
+
+		<div id="container"></div>
+		<div id="info" >
+			<h1>Strange attractors</h1>
+			<p>Rendering <a href="https://en.wikipedia.org/wiki/Attractor#Strange_attractor" >strange attractors</a>.</p>
+			<p>Pick one type of attractor, or <span id="randomize" class="action">randomize the selected one</span></p>
+			<p><ul id="attractors">
+				<li class="action action" data-attractor="lorenz">Lorenz</li>
+				<li class="action" data-attractor="rössler">Rössler</li>
+				<li class="action" data-attractor="rabinovich-fabrikant">Rabinovich-Fabrikant</li>
+				<li class="action" data-attractor="thomas">Thomas</li>
+				<li class="action" data-attractor="lorenz-84">Lorenz-84</li>
+			</ul></p>
+			
+		</div>
+
+		<script src="../js/three.js"></script>
+		<script src="../js/OrbitControls.js"></script>
+		<script src="../js/Maf.js"></script>
+		<script src="../js/THREE.MeshLine.js"></script>
+		<script src="../js/Common.js"></script>
+
+<script id="particle-vs" type="x-shader/x-vertex">
+precision highp float;
+
+attribute vec3 position;
+attribute float vertexId;
+attribute float size;
+
+uniform mat4 modelMatrix;
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+uniform vec3 vertices[ 3 ];
+uniform vec2 uvs[ 3 ];
+
+uniform vec2 dimensions;
+uniform float scale;
+uniform vec3 color;
+
+varying vec2 vUv;
+varying vec3 vColor;
+varying float vSize;
+
+const float PI = 3.14159265359;
+
+void main() {
+
+	int id = int( vertexId );
+	vec3 v = vertices[ id ];
+	vec4 p = modelViewMatrix * vec4( position, 1. );
+	p.xyz += scale * v * size;
+
+	vSize = size;
+	vUv = uvs[ id ];
+	vColor = color;
+
+	gl_Position = projectionMatrix * p;
+
+}
+
+</script>
+
+<script type="x-shader/x-vertex" id="ortho-vs" >
+precision highp float;
+
+attribute vec3 position;
+attribute vec2 uv;
+
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+
+varying vec2 vUv;
+
+void main() {
+
+	vUv = uv;
+	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1. );
+
+}
+</script>
+
+<script id="particle-fs" type="x-shader/x-vertex">
+precision highp float;
+
+varying vec2 vUv;
+varying vec3 vColor;
+varying float vSize;
+
+uniform float opacity;
+
+void main() {
+
+	vec2 barycenter = vec2( .5, .6666 );
+	float d = smoothstep( .5, .55, 1. - 2. * length( vUv - barycenter ) );
+	float a = 1. - smoothstep( .9, 1., 5. * length( vUv - barycenter ) );
+	a *= vSize;
+	if( d <= 0. || a * opacity <= 0. ) discard;
+	gl_FragColor = vec4( vColor, a * opacity );
+
+}
+
+</script>
+
+<script type="x-shader/x-fragment" id="tilt-shift-fs" >
+precision highp float;
+
+uniform sampler2D inputTexture;
+uniform vec2 resolution;
+
+varying vec2 vUv;
+
+float smootherstep(float edge0, float edge1, float x) {
+
+    x = clamp((x - edge0)/(edge1 - edge0), 0.0, 1.0);
+    return x*x*x*(x*(x*6. - 15.) + 10.);
+
+}
+
+void main(){
+
+	vec4 sum = vec4( 0. );
+	float d = abs( .5 - vUv.y );
+	vec2 inc = vec2( 0., .005 * smootherstep( 0., .75, d ) );
+
+	sum += texture2D( inputTexture, ( vUv - inc * 4. ) ) * 0.051;
+	sum += texture2D( inputTexture, ( vUv - inc * 3. ) ) * 0.0918;
+	sum += texture2D( inputTexture, ( vUv - inc * 2. ) ) * 0.12245;
+	sum += texture2D( inputTexture, ( vUv - inc * 1. ) ) * 0.1531;
+	sum += texture2D( inputTexture, ( vUv + inc * 0. ) ) * 0.1633;
+	sum += texture2D( inputTexture, ( vUv + inc * 1. ) ) * 0.1531;
+	sum += texture2D( inputTexture, ( vUv + inc * 2. ) ) * 0.12245;
+	sum += texture2D( inputTexture, ( vUv + inc * 3. ) ) * 0.0918;
+	sum += texture2D( inputTexture, ( vUv + inc * 4. ) ) * 0.051;
+
+	gl_FragColor = sum;
+
+}
+</script>
+
+<script type="x-shader/x-fragment" id="shift-fs" >
+precision highp float;
+
+uniform sampler2D inputTexture;
+uniform vec2 resolution;
+
+varying vec2 vUv;
+
+void main(){
+
+	vec2 inc = vec2( 2., 0. ) / resolution;
+
+	float r = texture2D( inputTexture, vUv - inc.xy ).r;
+	float g = texture2D( inputTexture, vUv ).g;
+	float b = texture2D( inputTexture, vUv + inc.xy ).b;
+
+	vec3 color = vec3( r, g, b );
+	//color = vec3( 1. ) - ( vec3( 1. ) - color ) * ( vec3( 1. ) - color );
+
+	gl_FragColor = vec4( color, 1. );
+
+}
+
+</script>
+
+<script type="x-shader/x-fragment" id="final-fs" >
+precision highp float;
+
+uniform sampler2D inputTexture;
+uniform vec2 resolution;
+
+uniform float boost;
+uniform float reduction;
+
+uniform float amount;
+uniform float time;
+
+varying vec2 vUv;
+
+#define FXAA_REDUCE_MIN   (1.0/128.0)
+#define FXAA_REDUCE_MUL   (1.0/8.0)
+#define FXAA_SPAN_MAX     8.0
+
+float random(vec2 n, float offset ){
+	return .5 - fract(sin(dot(n.xy + vec2( offset, 0. ), vec2(12.9898, 78.233)))* 43758.5453);
+}
+
+void main() {
+
+    vec2 res = 1. / resolution;
+
+    vec3 rgbNW = texture2D( inputTexture, ( vUv.xy + vec2( -1.0, -1.0 ) * res ) ).xyz;
+    vec3 rgbNE = texture2D( inputTexture, ( vUv.xy + vec2( 1.0, -1.0 ) * res ) ).xyz;
+    vec3 rgbSW = texture2D( inputTexture, ( vUv.xy + vec2( -1.0, 1.0 ) * res ) ).xyz;
+    vec3 rgbSE = texture2D( inputTexture, ( vUv.xy + vec2( 1.0, 1.0 ) * res ) ).xyz;
+    vec4 rgbaM  = texture2D( inputTexture,  vUv.xy  * res );
+    vec3 rgbM  = rgbaM.xyz;
+    vec3 luma = vec3( 0.299, 0.587, 0.114 );
+
+    float lumaNW = dot( rgbNW, luma );
+    float lumaNE = dot( rgbNE, luma );
+    float lumaSW = dot( rgbSW, luma );
+    float lumaSE = dot( rgbSE, luma );
+    float lumaM  = dot( rgbM,  luma );
+    float lumaMin = min( lumaM, min( min( lumaNW, lumaNE ), min( lumaSW, lumaSE ) ) );
+    float lumaMax = max( lumaM, max( max( lumaNW, lumaNE) , max( lumaSW, lumaSE ) ) );
+
+    vec2 dir;
+    dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
+    dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
+
+    float dirReduce = max( ( lumaNW + lumaNE + lumaSW + lumaSE ) * ( 0.25 * FXAA_REDUCE_MUL ), FXAA_REDUCE_MIN );
+
+    float rcpDirMin = 1.0 / ( min( abs( dir.x ), abs( dir.y ) ) + dirReduce );
+    dir = min( vec2( FXAA_SPAN_MAX,  FXAA_SPAN_MAX),
+          max( vec2(-FXAA_SPAN_MAX, -FXAA_SPAN_MAX),
+                dir * rcpDirMin)) * res;
+    vec4 rgbA = (1.0/2.0) * (
+    texture2D(inputTexture,  vUv.xy + dir * (1.0/3.0 - 0.5)) +
+    texture2D(inputTexture,  vUv.xy + dir * (2.0/3.0 - 0.5)));
+    vec4 rgbB = rgbA * (1.0/2.0) + (1.0/4.0) * (
+    texture2D(inputTexture,  vUv.xy + dir * (0.0/3.0 - 0.5)) +
+    texture2D(inputTexture,  vUv.xy + dir * (3.0/3.0 - 0.5)));
+    float lumaB = dot(rgbB, vec4(luma, 0.0));
+
+    vec4 color;
+    if ( ( lumaB < lumaMin ) || ( lumaB > lumaMax ) ) {
+        color = rgbA;
+    } else {
+        color = rgbB;
+    }
+
+    vec2 position = ( gl_FragCoord.xy / resolution ) - .5;
+	float vignette = length( position );
+    vignette = boost - vignette * reduction;
+
+    color.rgb *= vignette;
+
+    color += vec4( vec3( amount * random( vUv, time ) ), 1. );
+
+    float gamma = 1.2;
+    color.rgb = pow(color.rgb, vec3(1.0/gamma));
+
+    gl_FragColor = color;
+
+}
+
+</script>
+
+<script>
+
+// http://65.media.tumblr.com/ca14be5f42fb7400262dcda5b118c717/tumblr_oe3gqjol4V1qapjdzo1_500.jpg
+// http://67.media.tumblr.com/32ea1365d8ab8793b84232077a3cd065/tumblr_nmflvg45HG1tzffmlo1_1280.jpg
+
+'use strict';
+
+var NUM_POINTS = 50000;
+
+var container, renderer, camera, controls, scene;
+var mesh;
+
+var container = document.getElementById( 'container' );
+
+function LorenzAttractor() {
+
+	this.id = 'lorenz';
+
+	this.a = 10;
+	this.b = 28;
+	this.c = 8 / 3;
+
+	this.x = 0;
+	this.y = 10;
+	this.z = 10;
+
+	this.h = .004;
+	this.scale = 10;
+	this.spread = .5;
+	this.particleSize = .1;
+	this.autoCenter = true;
+
+}
+
+LorenzAttractor.prototype.generatePoint = function( x, y, z ) {
+
+	var nx = this.a * ( y - x );
+	var ny = ( x * ( this.b - z ) - y );
+	var nz = ( x * y - this.c * z );
+
+	x += this.h * nx; y += this.h * ny; z += this.h * nz;
+
+	return { x: x, y: y, z: z }
+
+}
+
+LorenzAttractor.prototype.randomize = function() {
+
+	this.a = Maf.randomInRange( 5, 20 );
+	this.b = Maf.randomInRange( 5, 50 );
+	this.c = Maf.randomInRange( .1, .5 );
+
+	this.x = Maf.randomInRange( -10, 10 );
+	this.y = Maf.randomInRange( -10, 10 );
+	this.z = Maf.randomInRange( -10, 10 );
+
+}
+
+LorenzAttractor.prototype.serialize = function() {
+
+	return this.id + ',' + this.a + ',' + this.b + ',' + this.c + ',' + this.x + ',' + this.y + ',' + this.z;
+
+}
+
+LorenzAttractor.prototype.deserialize = function( hash ) {
+
+	var fields = hash.split( ',' );
+
+	this.a = parseFloat( fields[ 1 ] );
+	this.b = parseFloat( fields[ 2 ] );
+	this.c = parseFloat( fields[ 3 ] );
+
+	this.x = parseFloat( fields[ 4 ] );
+	this.y = parseFloat( fields[ 5 ] );
+	this.z = parseFloat( fields[ 6 ] );
+
+}
+
+function RosslerAttractor() {
+
+	this.id = 'rössler';
+
+	this.a = .2;
+	this.b = .2;
+	this.c = 5.7;
+
+	this.x = 0;
+	this.y = 10;
+	this.z = 10;
+
+	this.h = .008;
+	this.scale = 20;
+	this.spread = 1;
+	this.particleSize = .1;
+	this.autoCenter = false;
+
+}
+
+RosslerAttractor.prototype.generatePoint = function( x, y, z ) {
+
+	var nx = - ( y + z );
+	var ny = ( x + this.a * y );
+	var nz = ( this.b + x * z - this.c * z );
+
+	x += this.h * nx; y += this.h * ny; z += this.h * nz;
+
+	return { x: x, y: y, z: z }
+
+}
+
+RosslerAttractor.prototype.randomize = function() {
+
+	this.a = Maf.randomInRange( .1, 1 );
+	this.b = Maf.randomInRange( .1, 1 );
+	this.c = Maf.randomInRange( .1, 10 );
+
+	this.x = Maf.randomInRange( -10, 10 );
+	this.y = Maf.randomInRange( -10, 10 );
+	this.z = Maf.randomInRange( -10, 10 );
+
+}
+
+RosslerAttractor.prototype.serialize = function() {
+
+	return this.id + ',' + this.a + ',' + this.b + ',' + this.c + ',' + this.x + ',' + this.y + ',' + this.z;
+
+}
+
+RosslerAttractor.prototype.deserialize = function( hash ) {
+
+	var fields = hash.split( ',' );
+
+	this.a = parseFloat( fields[ 1 ] );
+	this.b = parseFloat( fields[ 2 ] );
+	this.c = parseFloat( fields[ 3 ] );
+
+	this.x = parseFloat( fields[ 4 ] );
+	this.y = parseFloat( fields[ 5 ] );
+	this.z = parseFloat( fields[ 6 ] );
+
+}
+
+function RabinovichFabrikantAttractor() {
+
+	this.id = 'rabinovich-fabrikant';
+
+	this.alpha = 1.1;
+	this.gamma = .87;
+
+	this.x = -1;
+	this.y = 0;
+	this.z = .5;
+
+	this.h = .002;
+	this.scale = 300;
+	this.spread = .2;
+	this.particleSize = .005;
+	this.autoCenter = true;
+
+}
+
+RabinovichFabrikantAttractor.prototype.generatePoint = function( x, y, z ) {
+
+	var nx = y * ( z - 1 + x * x ) + this.gamma * x;
+	var ny = x * ( 3 * z + 1 - x * x ) + this.gamma * y;
+	var nz = - 2 * z * ( this.alpha + x * y );
+
+	x += this.h * nx; y += this.h * ny; z += this.h * nz;
+
+	return { x: x, y: y, z: z }
+
+}
+
+RabinovichFabrikantAttractor.prototype.randomize = function() {
+
+	this.alpha = Maf.randomInRange( .1, 1 );
+	this.gamma = Maf.randomInRange( .1, 1 );
+
+	this.x = Maf.randomInRange( -1, 1 );
+	this.y = Maf.randomInRange( -1, 1 );
+	this.z = Maf.randomInRange( -1, 1 );
+
+}
+
+RabinovichFabrikantAttractor.prototype.serialize = function() {
+
+	return this.id + ',' + this.alpha + ',' + this.gamma + ',' + this.x + ',' + this.y + ',' + this.z;
+
+}
+
+RabinovichFabrikantAttractor.prototype.deserialize = function( hash ) {
+
+	var fields = hash.split( ',' );
+
+	this.alpha = parseFloat( fields[ 1 ] );
+	this.gamma = parseFloat( fields[ 2 ] );
+
+	this.x = parseFloat( fields[ 3 ] );
+	this.y = parseFloat( fields[ 4 ] );
+	this.z = parseFloat( fields[ 5 ] );
+
+}
+
+function ThomasAttractor() {
+
+	this.id = 'thomas';
+
+	this.b = 0.208186;
+
+	this.x = 1;
+	this.y = 0;
+	this.z = 1;
+
+	this.h = .08;
+	this.scale = 200;
+	this.spread = .1;
+	this.particleSize = .025;
+	this.autoCenter = true;
+
+}
+
+ThomasAttractor.prototype.generatePoint = function( x, y, z ) {
+
+	var nx = Math.sin( y ) - this.b * x;
+	var ny = Math.sin( z ) - this.b * y;
+	var nz = Math.sin( x ) - this.b * z;
+
+	x += this.h * nx; y += this.h * ny; z += this.h * nz;
+
+	return { x: x, y: y, z: z }
+
+}
+
+ThomasAttractor.prototype.randomize = function() {
+
+	this.b = Maf.randomInRange( .01, .4 );
+
+	this.x = Maf.randomInRange( -1, 1 );
+	this.y = Maf.randomInRange( -1, 1 );
+	this.z = Maf.randomInRange( -1, 1 );
+
+}
+
+ThomasAttractor.prototype.serialize = function() {
+
+	return this.id + ',' + this.b + ',' + this.x + ',' + this.y + ',' + this.z;
+
+}
+
+ThomasAttractor.prototype.deserialize = function( hash ) {
+
+	var fields = hash.split( ',' );
+
+	this.b = parseFloat( fields[ 1 ] );
+
+	this.x = parseFloat( fields[ 2 ] );
+	this.y = parseFloat( fields[ 3 ] );
+	this.z = parseFloat( fields[ 4 ] );
+
+}
+
+function Lorenz84Attractor() {
+
+	this.id = 'lorenz-84';
+
+	this.a = 1.111;
+	this.b = 1.479;
+	this.f = 4.494;
+	this.g = .44;
+
+	this.x = 1;
+	this.y = 1;
+	this.z = 1;
+
+	this.h = .136;
+	this.scale = 100;
+	this.spread = .01;
+	this.particleSize = .025;
+	this.autoCenter = true;
+
+}
+
+Lorenz84Attractor.prototype.generatePoint = function( x, y, z ) {
+
+	var nx = ( -this.a * x - y * y - z * z + this.a * this.f)
+	var ny = ( -y + x * y - this.b * x * z + this.g )
+	var nz = ( -z + this.b * x * y + x * z)
+
+	x += this.h * nx; y += this.h * ny; z += this.h * nz;
+
+	return { x: x, y: y, z: z }
+
+}
+
+Lorenz84Attractor.prototype.randomize = function() {
+
+	this.a = Maf.randomInRange( 5, 20 );
+	this.b = Maf.randomInRange( 5, 50 );
+	this.f = Maf.randomInRange( .1, .5 );
+	this.g = Maf.randomInRange( .1, .5 );
+
+	this.x = Maf.randomInRange( -10, 10 );
+	this.y = Maf.randomInRange( -10, 10 );
+	this.z = Maf.randomInRange( -10, 10 );
+
+}
+
+Lorenz84Attractor.prototype.serialize = function() {
+
+	return this.id + ',' + this.a + ',' + this.b + ',' + this.f + ',' + this.g + ',' + this.x + ',' + this.y + ',' + this.z;
+
+}
+
+Lorenz84Attractor.prototype.deserialize = function( hash ) {
+
+	var fields = hash.split( ',' );
+
+	this.a = parseFloat( fields[ 1 ] );
+	this.b = parseFloat( fields[ 2 ] );
+	this.f = parseFloat( fields[ 3 ] );
+	this.g = parseFloat( fields[ 4 ] );
+
+	this.x = parseFloat( fields[ 5 ] );
+	this.y = parseFloat( fields[ 6 ] );
+	this.z = parseFloat( fields[ 7 ] );
+
+}
+
+// Lorenz a: 6.970773956984983, b: 45.21069279106107. c: 0.40074195636847343
+
+var attractors = {
+	'lorenz': LorenzAttractor,
+	'rössler': RosslerAttractor,
+	'rabinovich-fabrikant': RabinovichFabrikantAttractor,
+	'thomas': ThomasAttractor,
+	'lorenz-84': Lorenz84Attractor
+}
+
+// http://www.chaoscope.org/doc/attractors.htm
+// http://softology.com.au/tutorials/attractors2d/tutorial.htm
+// http://chaos-3d.e-monsite.com/pages/strange-attractor-type-i.html
+
+var resolution = new THREE.Vector2( window.innerWidth, window.innerHeight );
+var thinLines, thickLines, particleSystem;
+var attractorObject = new THREE.Object3D();
+
+function initScene( id, randomize, hash ) {
+
+	currentAttractor = id;
+
+	while( attractorObject.children.length ) {
+		attractorObject.remove( attractorObject.children[ 0 ] );
+	}
+
+	var points = [];
+	var particles = [];
+
+	function densityFunction( p ) {
+		return Maf.parabola( p, 1 )
+	}
+
+	var attractor = new attractors[ id ]();
+
+	if( hash ) {
+		attractor.deserialize( hash );
+	}
+
+	if( randomize ) {
+		attractor.randomize();
+		console.log( attractor );
+	}
+
+	window.location.hash = attractor.serialize();
+
+	var p = {
+		x: attractor.x,
+		y: attractor.y,
+		z: attractor.z
+	}
+
+	for( var j = 0; j < NUM_POINTS; j++ ) {
+
+		p = attractor.generatePoint( p.x, p.y, p.z );
+
+		if( isNaN( p.x ) || isNaN( p.y ) || isNaN( p.z ) ) {
+			console.log( 'Failed, retry' );
+			initScene( id, randomize );
+			return;
+		}
+
+		points.push( attractor.scale * p.x );
+		points.push( attractor.scale * p.y );
+		points.push( attractor.scale * p.z );
+
+		var d = Math.random() * ( 2 * attractor.spread * attractor.scale * densityFunction( j / NUM_POINTS ) );
+		var a = Math.random() * Math.PI;
+		var b = Math.random() * 2 * Math.PI;
+
+		particles.push( attractor.scale * p.x + d * Math.sin( a ) * Math.cos( b ) );
+		particles.push( attractor.scale * p.y + d * Math.sin( a ) * Math.sin( b ) );
+		particles.push( attractor.scale * p.z + d * Math.cos( a ) );
+
+	}
+
+	var geometry = new THREE.Geometry();
+	for( var j = 0; j < points.length; j+=3 ) {
+		var v = new THREE.Vector3( points[ j ], points[ j + 1 ], points[ j + 2 ] );
+		geometry.vertices.push( v );
+	}
+
+	geometry.computeBoundingBox();
+
+	var center = geometry.boundingBox.max.clone();
+	center.sub( geometry.boundingBox.min );
+	center.multiplyScalar( .5 );
+	center.add( geometry.boundingBox.min );
+	center.multiplyScalar( -1 );
+//SET CONFIGS FOR FIGURE LINE, MESH, AND COLOUR
+	var line = new THREE.MeshLine();
+	line.setGeometry( geometry, function( p ) { return densityFunction( p ) } );
+	var material = new THREE.MeshLineMaterial({
+		color: new THREE.Color( 0x8dafb0 ),//8dafb0= default color
+		resolution: resolution,
+		sizeAttenuation: true,
+		lineWidth: 1 * attractor.scale * attractor.spread,
+		opacity: .03,
+		near: camera.near,
+		far: camera.far,
+		depthWrite: false,
+		depthTest: false,
+		transparent: true,
+		blending: THREE.AdditiveBlending
+	});
+	var mesh = new THREE.Mesh( line.geometry, material );
+	attractorObject.add( mesh );
+	thinLines = mesh;
+
+	var geometry = new THREE.BufferGeometry();
+	var positions = new Float32Array( points );
+	geometry.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
+	var material = new THREE.LineBasicMaterial({
+		color: new THREE.Color( 0x3dbf4a ),
+		opacity: .25,
+		transparent: true,
+		blending: THREE.AdditiveBlending
+	});
+
+	mesh = new THREE.Line( geometry, material );
+	attractorObject.add( mesh );
+	thickLines = mesh;
+
+	var pData = [];
+	var idData = [];
+	var sizeData = [];
+	for( var j = 0; j < particles.length; j += 3 ) {
+
+		var x = particles[ j ];
+		var y = particles[ j + 1 ];
+		var z = particles[ j + 2 ];
+		var s = Maf.randomInRange( .1, 1 ) * densityFunction( j / particles.length );
+
+		pData.push( x );
+		pData.push( y );
+		pData.push( z );
+		idData.push( j % 3 );
+		sizeData.push( s );
+
+		pData.push( x );
+		pData.push( y );
+		pData.push( z );
+		idData.push( j % 3 + 1 );
+		sizeData.push( s );
+
+		pData.push( x );
+		pData.push( y );
+		pData.push( z );
+		idData.push( j % 3 + 2 );
+		sizeData.push( s );
+
+	}
+
+	var particleGeometry = new THREE.BufferGeometry();
+	var positions = new Float32Array( pData );
+	var indices = new Float32Array( idData );
+	var sizes = new Float32Array( sizeData );
+
+	particleGeometry.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
+	particleGeometry.addAttribute( 'vertexId', new THREE.BufferAttribute( indices, 1 ) );
+	particleGeometry.addAttribute( 'size', new THREE.BufferAttribute( sizes, 1 ) );
+
+	var particleMaterial = new THREE.RawShaderMaterial( {
+		uniforms:{
+			scale: { type: 'f', value: .5 * attractor.particleSize * attractor.scale },
+			opacity: { type: 'f', value: .5 },
+			color: { type: 'c', value: new THREE.Color( 0x8dafb0 ) },
+			vertices: { type: 'v3v', value: [
+				new THREE.Vector3( -1, -1, 0 ),
+				new THREE.Vector3(  1, -1, 0 ),
+				new THREE.Vector3(  0,  1, 0 )
+			]},
+			uvs: { type: 'v2v', value: [
+				new THREE.Vector3( 0, 1 ),
+				new THREE.Vector3( 1, 1 ),
+				new THREE.Vector3( .5, 0 )
+			]}
+		},
+		vertexShader: document.getElementById( 'particle-vs' ).textContent,
+		fragmentShader: document.getElementById( 'particle-fs' ).textContent,
+		depthTest: false,
+		depthWrite: false,
+		transparent: true,
+		blending: THREE.AdditiveBlending
+	} );
+
+	particleSystem = new THREE.Mesh( particleGeometry, particleMaterial );
+	attractorObject.add( particleSystem );
+
+	if( attractor.autoCenter ) attractorObject.position.copy( center );
+	else attractorObject.position.set( 0, 0, 0 );
+
+}
+
+function createRenderTarget() {
+
+	return new THREE.WebGLRenderTarget( 1, 1, {
+		wrapS: THREE.ClampToEdgeWrapping,
+		wrapT: THREE.ClampToEdgeWrapping,
+		format: THREE.RGBAFormat,
+		stencilBuffer: false,
+		depthBuffer: true
+	});
+
+}
+
+var baseFBO, shiftFBO, tiltShiftFBO;
+var orthoQuad, orthoCamera, orthoScene;
+var shiftShader, finalShader, tiltShiftShader;
+
+function init() {
+
+	container = document.getElementById( 'container' );
+
+	scene = new THREE.Scene();
+	scene.add( attractorObject );
+
+	camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, .1, 10000 );
+	camera.target = new THREE.Vector3( 0, 0, 0 );
+	camera.position.set( 0, 0, 200 );
+	camera.lookAt( camera.target );
+	scene.add( camera );
+
+	renderer = new THREE.WebGLRenderer( { antialias: !true, preserveDrawingBuffer: true } );
+	renderer.setPixelRatio( window.devicePixelRatio );
+	renderer.setClearColor( 0x261b1f, 1 );
+	container.appendChild( renderer.domElement );
+
+	renderer.shadowMap.enabled = true;
+	renderer.shadowMap.type = THREE.PCFShadowMap;
+
+	addFullscreenShortcut( renderer.domElement, onWindowResized );
+
+	controls = new THREE.OrbitControls( camera, renderer.domElement );
+	controls.enableDamping = true;
+	controls.dampingFactor = 0.1;
+	controls.rotateSpeed = .1;
+
+	baseFBO = createRenderTarget();
+	shiftFBO = createRenderTarget();
+	tiltShiftFBO = createRenderTarget();
+
+	shiftShader = new THREE.RawShaderMaterial( {
+		uniforms: {
+			inputTexture: { type: 't', value: baseFBO.texture },
+			resolution: { type: 'v2', value: resolution },
+		},
+		vertexShader: document.getElementById('ortho-vs').textContent,
+		fragmentShader: document.getElementById('shift-fs').textContent,
+	} );
+
+	tiltShiftShader = new THREE.RawShaderMaterial( {
+		uniforms: {
+			inputTexture: { type: 't', value: shiftFBO.texture },
+			resolution: { type: 'v2', value: new THREE.Vector2() }
+		},
+		vertexShader: document.getElementById('ortho-vs').textContent,
+		fragmentShader: document.getElementById('tilt-shift-fs').textContent,
+	} );
+
+	finalShader = new THREE.RawShaderMaterial( {
+		uniforms: {
+			inputTexture: { type: 't', value: tiltShiftFBO.texture },
+			resolution: { type: 'v2', value: resolution },
+			boost: { type: 'f', value: 1.1 },
+			reduction: { type: 'f', value: .9 },
+			amount: { type: 'f', value: .1 },
+			time: { type: 'f', value: 0 }
+		},
+		vertexShader: document.getElementById('ortho-vs').textContent,
+		fragmentShader: document.getElementById('final-fs').textContent,
+	} );
+
+	orthoScene = new THREE.Scene();
+	orthoCamera = new THREE.OrthographicCamera( 1 / - 2, 1 / 2, 1 / 2, 1 / - 2, .00001, 1000 );
+	orthoQuad = new THREE.Mesh( new THREE.PlaneBufferGeometry( 1, 1 ), finalShader );
+	orthoScene.add( orthoQuad );
+
+	if( window.location.hash) processHash();
+	else initScene( 'lorenz' );
+	onWindowResized();
+	fader.show();
+
+	window.addEventListener( 'resize', onWindowResized );
+
+	animate();
+
+}
+
+function onWindowResized( event ) {
+
+	var w = container.clientWidth;
+	var h = container.clientHeight;
+
+	renderer.setSize( w, h );
+	camera.aspect = w / h;
+	camera.updateProjectionMatrix();
+
+	var dPR = window.devicePixelRatio;
+	resolution.set( w * dPR, h * dPR );
+
+	baseFBO.setSize( w * dPR, h * dPR );
+	shiftFBO.setSize( w * dPR, h * dPR );
+	tiltShiftFBO.setSize( w * dPR, h * dPR );
+
+	orthoQuad.scale.set( w, h, 1 );
+
+	orthoCamera.left   = - w / 2;
+	orthoCamera.right  =   w / 2;
+	orthoCamera.top    =   h / 2;
+	orthoCamera.bottom = - h / 2;
+	orthoCamera.updateProjectionMatrix();
+
+}
+
+function Fader() {
+
+	this.draw = 0;
+	this.nDraw = 0;
+	this.easing = 0;
+	this.fading = '';
+
+	this.onFadedIn = function() {};
+	this.onFadedOut = function() {};
+
+}
+
+Fader.prototype.show = function() {
+//ANIMATION FADE IN TIME (EASING = LOWER value = long time to draw)
+	this.nDraw = 1;
+	this.easing = .005;
+	this.fading = 'in';
+
+}
+
+Fader.prototype.hide = function() {
+
+	this.nDraw = 0;
+	this.easing = .1;
+	this.fading = 'out';
+
+}
+
+Fader.prototype.update = function() {
+
+	this.draw += ( this.nDraw - this.draw ) * this.easing;
+
+	var epsilon = .001;
+
+	if( this.fading === 'in' ) {
+		if( this.nDraw - this.draw < epsilon ) {
+			this.fading = '';
+			this.draw = this.nDraw;
+			requestAnimationFrame( function() { this.onFadedIn() }.bind( this ) );
+		}
+	}
+
+	if( this.fading === 'out' ) {
+		if( this.draw - this.nDraw < epsilon ) {
+			this.fading = '';
+			this.draw = this.nDraw;
+			requestAnimationFrame( function() { this.onFadedOut() }.bind( this ) );
+		}
+	}
+
+	return this.draw;
+
+}
+
+var fader = new Fader();
+
+function animate() {
+
+	requestAnimationFrame( animate );
+
+	controls.update();
+
+	var t = fader.update();
+	thinLines.geometry.setDrawRange( 0, thinLines.geometry.attributes.position.count * t )
+	thickLines.geometry.setDrawRange( 0, thickLines.geometry.attributes.position.count * t )
+	particleSystem.geometry.setDrawRange( 0, particleSystem.geometry.attributes.position.count * t )
+
+	renderer.render( scene, camera, baseFBO );
+	orthoQuad.material = shiftShader;
+	renderer.render( orthoScene, orthoCamera, shiftFBO );
+	orthoQuad.material = tiltShiftShader;
+	renderer.render( orthoScene, orthoCamera, tiltShiftFBO );
+	finalShader.uniforms.time.value = .000001 * performance.now();
+	orthoQuad.material = finalShader;
+	renderer.render( orthoScene, orthoCamera );
+
+}
+
+window.addEventListener( 'load', init );
+window.addEventListener( 'hashchange', processHash );
+
+var attractorButtons = document.querySelectorAll( '#attractors li' );
+
+function processHash() {
+
+	var hash = window.location.hash.substr( 1 );
+	var id = hash.substr( 0, hash.indexOf( ',' ) );
+	[].forEach.call( attractorButtons, function( li ) {
+		var itemId = li.getAttribute( 'data-attractor');
+		li.classList.remove( 'active' );
+		if( itemId === id ) li.classList.add( 'active' );
+	} );
+	initScene( id, false, hash );
+
+}
+
+var currentAttractor = 'lorenz';
+[].forEach.call( attractorButtons, function( li ) {
+	var id = li.getAttribute( 'data-attractor');
+	li.addEventListener( 'click', function ( e ) {
+		[].forEach.call( attractorButtons, function( li ) { li.classList.remove( 'active' ); } );
+		fader.onFadedOut = function() {
+			initScene( id, false );
+			fader.show();
+		}
+		fader.hide();
+		this.classList.add( 'active' );
+		e.preventDefault();
+	})
+})
+
+document.getElementById( 'randomize' ).addEventListener( 'click', function( e ) {
+	fader.onFadedOut = function() {
+		initScene( currentAttractor, true );
+		fader.show();
+	}
+	fader.hide();
+	e.preventDefault();
+})
+</script>
+
+	</body>
+</html>
