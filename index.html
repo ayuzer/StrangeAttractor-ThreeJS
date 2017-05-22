@@ -1,5 +1,5 @@
 <!-- FULL CREDITS TO: Jaume Sanchez Elias - https://www.clicktorelease.com/code/codevember-2016/ - and to the developers of the correponding JS libraries -->
-<!-- 2017-05-20 | James Ro -->
+<!-- 2017-05-20 | James Hyune Ro | ON, Canada  -->
 <!doctype html>
 <html lang="en">
 	<head>
@@ -9,7 +9,7 @@
 
 
 <link rel="stylesheet" type="text/css" href="./css/styles.css" media="screen" />
-		<link href="https://fonts.googleapis.com/css?family=Lato:100,700|Playfair+Display:700" rel="stylesheet">
+		<link href="https://fonts.googleapis.com/css?family=Lato:100,700|Playfair+Display:700|Source+Sans+Pro" rel="stylesheet">
 
 		<style>
 		#attractors{ list-style-type: none; margin-bottom: 1em; }
@@ -21,15 +21,16 @@
 
 </head>
 	<body>
-		<div id="container"></div>
+		<div id="container"></div> <!-- container= view box for three.js graphics -->
+		<div id="personal">
+		</div>
 		<div id="info" >
-
 			<h1>Life can be a collection of : <br> Strange Attractors</h1>
-			<h3>Hi there!</h3>
-			<h3>My name is Hyunje (James) Ro</h3>
-			<h4><a href="https://www.dropbox.com/s/8mr6gi6w94off9q/Resume%20x%20James%20%28mar%2021%202017%29.pdf?dl=0">Resume</a></h4>
 			<p><br></p>
-			<p>Info: <a href="./pages/">directory</a>.</p>
+			<h3>Hi, my name is Hyunje (James) Ro</h3>
+			<h3><a href="https://www.dropbox.com/s/8mr6gi6w94off9q/Resume%20x%20James%20%28mar%2021%202017%29.pdf?dl=0" target="_blank">Résumé</a></h3>
+			<p><br><br><br><br><br><br><br></p>
+		<!-- <p>Info: <a href="./pages/">directory</a>.</p> -->
 			<p>Pick one type of attractor, or <span id="randomize" class="action">randomize the selected one</span></p>
 			<p><ul id="attractors">
 				<li class="action action" data-attractor="lorenz">Lorenz</li>
